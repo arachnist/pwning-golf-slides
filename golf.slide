@@ -1,0 +1,284 @@
+Skrobanie bajtów
+Albo w jaki sposób wydrukować porządany ascii-art jak najmniejszą ilością bajtów
+11:52 07 Nov 2017
+Tags: xz, gzip, ascii-art
+
+Robert Gerus
+Członek hswaw
+devops/sysadmin w Samba.TV
+@arachnist
+
+* O co chodzi?
+
+* 
+Gynvael zrobił
+.link http://gynvael.coldwind.pl/?id=666
+Nagrodą były wejściówki na konferencję na której jesteśmy
+Konkurs wydaje się być prosty - nie wymaga umiejętności których nie posiadam (np zaawansowanego RE)
+
+* Research
+
+* 
+Co wiemy?
+- mamy tekst który powinien zostać wypisany
+.code pwning2017.txt
+- drobna pułapka: "plik źródłowy" zawiera o jeden znak nowej linii za dużo
+- wiemy w jakim środowisku rozwiązania będą uruchamiane - Ubuntu 17.04 Desktop 32-bit
+- domyślny shell - bash
+
+* Co możemy spróbować zrobić?
+
+* Binarka?
+
+- Co mówi internet?
+.link https://codegolf.stackexchange.com/questions/5696/shortest-elf-for-hello-world-n
+- Wydaje się za duże - hello-world w ELF to 57 bajtów
+
+* Kompresja?
+Co mamy dostępne na docelowym systemie?
+- Najbardziej popularne narzędzia: xz, gzip, bzip2
+
+  % xz -9 --keep pwning2017.txt
+  % gzip -9 --keep pwning2017.txt
+  % bzip2 -9 --keep pwning2017.txt
+  % du -bs pwning2017.txt.*
+  183     pwning2017.txt.bz2
+  181     pwning2017.txt.gz
+  208     pwning2017.txt.xz
+
+* Wybór wydaje się oczywisty…
+
+* Problem?
+Rozwiązanie musi zmieścić się w jednym pliku
+
+* Rozwiązanie stosowane w instalatorach
+Dokleić payload do skryptu .sh
+Przykład?
+.link nvidia http://http.download.nvidia.com/XFree86/Linux-x86_64/387.22/NVIDIA-Linux-x86_64-387.22.run
+
+  skip_decompress=1099
+  tail -n +%{skip_decompress} %0
+  # tworzenie plików tymczasowych etc etc
+
+* Może spróbujemy tak samo
+
+.code test.sh
+
+  % ./test.sh
+  blabla
+
+* Pierwszy dekompresor
+
+.code decompress.naive.sh
+
+  % cat decompress.naive.sh pwning2017.txt.gz > run.sh; chmod +x run.sh
+  % ./run.sh
+          ______ _    _ _   _ _
+          | ___ \ |  | | \ | (_)    SECURITY
+          | |_/ / |  | |  \| |_ _ __   __ _
+          |  __/| |/\| | . ` | | '_ \ / _` |
+          | |   \  /\  / |\  | | | | | (_| |
+          \_|    \/  \/\_| \_/_|_| |_|\__, |
+                                       __/ |
+          W a r s z a w a   2 0 1 7   |___/
+  % du -bs run.sh
+  215     run.sh
+
+:)
+
+* Jest nieźle
+
+* Ale czy da się lepiej?
+
+* Jak usunąć/użyć shebang?
+.code decompress.without-shebang.sh
+
+  % cat decompress.without-shebang.sh pwning2017.txt.gz > run.sh; chmod +x run.sh
+  % ./run.sh
+  zsh: exec format error: ./run.sh
+
+* Nie?
+* Jedna z rzeczy które wiemy
+- domyślny shell - bash
+* 
+  % bash
+  $ ./run.sh
+          ______ _    _ _   _ _
+          | ___ \ |  | | \ | (_)    SECURITY
+          | |_/ / |  | |  \| |_ _ __   __ _
+          |  __/| |/\| | . ` | | '_ \ / _` |
+          | |   \  /\  / |\  | | | | | (_| |
+          \_|    \/  \/\_| \_/_|_| |_|\__, |
+                                       __/ |
+          W a r s z a w a   2 0 1 7   |___/
+  $ du -bs run.sh
+  205     run.sh
+* Tak
+Dzięki kompatybilności wstecznej z antycznymi sh, skrypty bez shebanga też są poprawnie wykonywane
+
+* Czy da się lepiej?
+xz dla większych plików ma znacznie lepsze wyniki niż gz
+
+* RTFM
+
+  % man xz
+  [ … ]
+  -F format, --format=format
+  [ … ]
+              raw    Compress  or  uncompress a raw stream (no headers).  This
+                     is meant for advanced users only.  To decode raw streams,
+                     you need use --format=raw and explicitly specify the fil‐
+                     ter chain, which normally would have been stored  in  the
+                     container headers.
+* 
+  % xz -9 -F raw --keep -c pwning2017.txt > pwning2017.txt.raw.xz
+  xz: Using a preset in raw mode is discouraged.
+  xz: The exact options of the presets may vary between software versions.
+  % du -bs pwning2017.txt.raw.xz
+  149     pwning2017.txt.raw.xz
+  % du -bs pwning2017.txt.gz
+  181     pwning2017.txt.gz
+
+Bingo!
+
+* Dekompresor?
+.code decompress.naive-xz
+
+  $ ./run.sh
+  xz: (stdin): File format not recognized
+
+:(
+
+* 
+.code decompress.semi-working-xz
+
+  $ ./run.sh
+  xz: Using a preset in raw mode is discouraged.
+  xz: The exact options of the presets may vary between software versions.
+          ______ _    _ _   _ _
+          | ___ \ |  | | \ | (_)    SECURITY
+          | |_/ / |  | |  \| |_ _ __   __ _
+          |  __/| |/\| | . ` | | '_ \ / _` |
+          | |   \  /\  / |\  | | | | | (_| |
+          \_|    \/  \/\_| \_/_|_| |_|\__, |
+                                       __/ |
+          W a r s z a w a   2 0 1 7   |___/
+
+:|
+
+* 
+.code decompress.working-xz
+
+  $ ./run.sh
+          ______ _    _ _   _ _
+          | ___ \ |  | | \ | (_)    SECURITY
+          | |_/ / |  | |  \| |_ _ __   __ _
+          |  __/| |/\| | . ` | | '_ \ / _` |
+          | |   \  /\  / |\  | | | | | (_| |
+          \_|    \/  \/\_| \_/_|_| |_|\__, |
+                                       __/ |
+          W a r s z a w a   2 0 1 7   |___/
+
+  % du -bs run.sh 
+  181     run.sh
+
+:)
+
+* Co jeszcze można poprawić?
+
+* tail
+.code decompress.tail
+
+  $ du -bs run.sh
+  178     run.sh
+
+* back to RTFM
+
+       --lzma2[=options]
+              Add  LZMA1  or  LZMA2 filter to the filter chain.  These filters
+              can be used only as the last filter in the chain.
+
+              pb=pb  Specify the number of position bits.  The  minimum  is  0
+                     and the maximum is 4; the default is 2.
+
+              lc=lc  Specify  the number of literal context bits.  The minimum
+                     is 0 and the maximum is 4; the default is  3.   In  addi‐
+                     tion, the sum of lc and lp must not exceed 4.
+
+* 
+  % xz -F raw --lzma2=lc=0,pb=0 -k -C none -c pwning2017.txt > pwning2017.txt.raw.options.xz
+  % cat decompress.tail pwning2017.txt.raw.options.xz > run.sh; du -bs run.sh
+  175     run.sh
+  $ ./run.sh
+          ______ _    _ _   _ _
+          | ___ \ |  | | \ | (_)    SECURITY
+          | |_/ / |  | |  \| |_ _ __   __ _
+          |  __/| |/\| | . ` | | '_ \ / _` |
+          | |   \  /\  / |\  | | | | | (_| |
+          \_|    \/  \/\_| \_/_|_| |_|\__, |
+                                       __/ |
+          W a r s z a w a   2 0 1 7   |___/
+
+* Ale czy da się lepiej?
+.code decompress.tail
+
+* 
+  -qq
+* 
+  ;exit
+
+* Jak pozbyć się obu problemów za jednym razem?
+
+* A gdyby tak przekierować gdzieś błędy?
+
+* 
+  % grep -c / pwning2017.txt.raw.options.xz
+  0
+
+* 
+.code decompress.tail-stderr
+  % cat decompress.tail-stderr pwning2017.txt.raw.options.xz > run.sh; echo "'" >> run.sh
+  % du -bs run.sh
+  174
+
+* A co z tail?
+.code decompress.sed
+  172     run.sh
+
+* Ale czy da się lepiej?
+
+* 
+  % hexdump pwning2017.txt.raw.options.xz
+  0000000 01e0 0058 008a 1000 376c 3935 43d5 cb4a
+  0000010 4c78 eeb2 5710 2173 78c8 a225 f6bf 56b7
+  0000020 5a26 3eab 302c 9b47 b052 6bfb 7f9a 36e8
+  0000030 c3fa a2ae 39a2 00fc 2254 1ff0 42aa 0e7c
+  0000040 5985 9fa1 257f 703b fbf2 f658 c197 2807
+  0000050 2d62 06e5 67ad 72fd bac4 bdeb b5e0 c72a
+  0000060 0270 bfd8 0181 ccd9 67b8 9096 ffad 4a5a
+  0000070 8eb1 858d ed68 a9f4 3f5a 70b5 bdab 4011
+  0000080 5a39 468a 0a75 fb40 3463 bfa9 c7a1 de2a
+  0000090 0000
+  0000092
+  
+* 
+  0000090 0000
+
+* 
+  % du -bs pwning2017.txt.raw.options.xz
+  146     pwning2017.txt.raw.options.xz
+
+* 
+  xz -F raw --lzma2=lc=0,pb=0 -k -C none -c pwning2017.txt | dd of=payload.optimized bs=1 count=144
+
+  % du -bs run.sh
+  170     run.sh
+
+* A czy potrzebujemy wszystkiego z run.sh?
+  % cat decompress.sed payload.optimized > run.sh; echo "'" >> run.sh
+
+  % echo "'"
+
+* 
+  % cat decompress.sed payload.optimized > run.sh; echo -n "'" >> run.sh
+  169     run.sh
